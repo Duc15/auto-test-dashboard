@@ -1,0 +1,24 @@
+body {
+    background-color: #f8f9fa;
+}
+.container {
+    max-width: 1200px;
+}
+h1 {
+    color: #343a40;
+    margin-bottom: 20px;
+}
+.table {
+    background-color: #fff;
+}
+.alert {
+    margin-top: 20px;
+}
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}

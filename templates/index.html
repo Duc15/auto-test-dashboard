@@ -1,0 +1,1350 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Automation Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+        }
+        .excel-table {
+            border-collapse: collapse;
+            width: 100%;
+            background-color: #fff;
+        }
+        .excel-table th, .excel-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 250px;
+        }
+        .excel-table th {
+            background-color: #e6f3ff;
+            color: #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .excel-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .excel-table tr:hover {
+            background-color: #f0f0f0;
+        }
+        .result-pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .result-fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .summary-box {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f8ff;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .summary-box ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .summary-box li {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        {% if username and project %}
+    <div class="alert alert-info">
+        Xin chào <strong>{{ username }}</strong>! Dự án: <strong>{{ project }}</strong>.
+        <a href="/logout" class="btn btn-sm btn-danger ml-3">Đăng xuất</a>
+    </div>
+{% endif %}
+
+        <h1>Test Automation Dashboard</h1>
+        <p>Upload file <code>test_cases.xlsx</code> để chạy kiểm thử API.</p>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Chọn file test_cases.xlsx:</label>
+                <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Chạy Test</button>
+        </form>
+
+        <div id="summary" class="mt-4"></div>
+        <div id="results" class="mt-4"></div>
+        <div id="download" class="mt-2"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+        $('#uploadForm').submit(function(e) {
+            e.preventDefault();
+            $('#results').html('<p class="text-info">Đang chạy kiểm thử...</p>');
+            $('#summary').html('');
+            $('#download').html('');
+            var formData = new FormData(this);
+
+            $.ajax({
+                url: '/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> ' + (summary['Pass'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Failed:</strong> ' + (summary['Fail'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị Kết quả chi tiết
+                    var resultsHtml = '<h3>Chi Tiết Kiểm Thử</h3>';
+                    resultsHtml += '<div class="table-container">';
+                    resultsHtml += '<table class="excel-table">';
+                    resultsHtml += '<thead><tr><th>API Name</th><th>Method</th><th>Endpoint</th><th>Request Body</th><th>Expected Status</th><th>Expected Response</th><th>Actual Response</th><th>Result</th><th>Message</th></tr></thead><tbody>';
+
+                    data.results.forEach(function(result) {
+                        var resultClass = result.result === 'Pass' ? 'result-pass' : 'result-fail';
+                        var requestBody = typeof result.request_body === 'object' ? JSON.stringify(result.request_body, null, 2) : result.request_body || 'N/A';
+                        var expectedResponse = typeof result.expected_response === 'object' ? JSON.stringify(result.expected_response, null, 2) : result.expected_response || 'N/A';
+                        var actualResponse = typeof result.actual_response === 'object' ? JSON.stringify(result.actual_response, null, 2) : result.actual_response || 'N/A';
+
+                        resultsHtml += '<tr>' +
+                            '<td>' + (result.api_name || 'N/A') + '</td>' +
+                            '<td>' + (result.method || 'N/A') + '</td>' +
+                            '<td>' + (result.endpoint || 'N/A') + '</td>' +
+                            '<td>' + requestBody + '</td>' +
+                            '<td>' + (result.expected_status || 'N/A') + '</td>' +
+                            '<td>' + expectedResponse + '</td>' +
+                            '<td>' + actualResponse + '</td>' +
+                            '<td class="' + resultClass + '">' + (result.result || 'N/A') + '</td>' +
+                            '<td>' + (result.message || 'N/A') + '</td>' +
+                            '</tr>';
+                    });
+
+                    resultsHtml += '</tbody></table>';
+                    resultsHtml += '</div>';
+                    $('#results').html(resultsHtml);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download" class="btn btn-success">Tải file test_result.xlsx</a>');
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX Error:', xhr.responseText, status, error);
+                    $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (xhr.responseText || error) + '</div>');
+                    $('#download').html('');
+                }
+            });
+        });
+    </script>
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Automation Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+        }
+        .excel-table {
+            border-collapse: collapse;
+            width: 100%;
+            background-color: #fff;
+        }
+        .excel-table th, .excel-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 250px;
+        }
+        .excel-table th {
+            background-color: #e6f3ff;
+            color: #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+        }
+        .excel-table th:hover {
+            background-color: #d0e6ff;
+        }
+        .excel-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .excel-table tr:hover {
+            background-color: #f0f0f0;
+        }
+        .result-pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .result-fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .summary-box {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f8ff;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .summary-box ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .summary-box li {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .filter-search {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        {% if username and project %}
+        <div class="alert alert-info">
+            Xin chào <strong>{{ username }}</strong>! Dự án: <strong>{{ project }}</strong>.
+            <a href="/logout" class="btn btn-sm btn-danger ml-3">Đăng xuất</a>
+        </div>
+        {% endif %}
+
+        <h1>Test Automation Dashboard</h1>
+        <p>Upload file <code>test_cases.xlsx</code> để chạy kiểm thử API.</p>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Chọn file test_cases.xlsx:</label>
+                <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Chạy Test</button>
+        </form>
+
+        <div class="filter-search mt-4">
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="resultFilter">Lọc theo kết quả:</label>
+                    <select id="resultFilter" class="form-control">
+                        <option value="all">Tất cả</option>
+                        <option value="Pass">Pass</option>
+                        <option value="Fail">Fail</option>
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label for="searchInput">Tìm kiếm:</label>
+                    <input type="text" id="searchInput" class="form-control" placeholder="Tìm theo API Name, Endpoint, Message...">
+                </div>
+            </div>
+        </div>
+
+        <div id="summary" class="mt-4"></div>
+        <div id="results" class="mt-4"></div>
+        <div id="download" class="mt-2"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+        let originalResults = []; // Lưu dữ liệu gốc để lọc/tìm kiếm/sắp xếp
+
+        $('#uploadForm').submit(function(e) {
+            e.preventDefault();
+            $('#results').html('<p class="text-info">Đang chạy kiểm thử...</p>');
+            $('#summary').html('');
+            $('#download').html('');
+            var formData = new FormData(this);
+
+            $.ajax({
+                url: '/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    // Lưu dữ liệu gốc
+                    originalResults = data.results || [];
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> ' + (summary['Pass'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Failed:</strong> ' + (summary['Fail'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị bảng kết quả
+                    renderTable(originalResults);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download" class="btn btn-success">Tải file test_result.xlsx</a>');
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX Error:', xhr.responseText, status, error);
+                    $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (xhr.responseText || error) + '</div>');
+                    $('#download').html('');
+                }
+            });
+        });
+
+        // Hàm hiển thị bảng
+        function renderTable(results) {
+            var resultsHtml = '<h3>Chi Tiết Kiểm Thử</h3>';
+            resultsHtml += '<div class="table-container">';
+            resultsHtml += '<table class="excel-table">';
+            resultsHtml += '<thead><tr><th data-sort="api_name">API Name</th><th data-sort="method">Method</th><th data-sort="endpoint">Endpoint</th><th>Request Body</th><th data-sort="expected_status">Expected Status</th><th>Expected Response</th><th>Actual Response</th><th data-sort="result">Result</th><th>Message</th></tr></thead><tbody>';
+
+            results.forEach(function(result) {
+                var resultClass = result.result === 'Pass' ? 'result-pass' : 'result-fail';
+                var requestBody = typeof result.request_body === 'object' ? JSON.stringify(result.request_body, null, 2) : result.request_body || 'N/A';
+                var expectedResponse = typeof result.expected_response === 'object' ? JSON.stringify(result.expected_response, null, 2) : result.expected_response || 'N/A';
+                var actualResponse = typeof result.actual_response === 'object' ? JSON.stringify(result.actual_response, null, 2) : result.actual_response || 'N/A';
+
+                resultsHtml += '<tr>' +
+                    '<td>' + (result.api_name || 'N/A') + '</td>' +
+                    '<td>' + (result.method || 'N/A') + '</td>' +
+                    '<td>' + (result.endpoint || 'N/A') + '</td>' +
+                    '<td>' + requestBody + '</td>' +
+                    '<td>' + (result.expected_status || 'N/A') + '</td>' +
+                    '<td>' + expectedResponse + '</td>' +
+                    '<td>' + actualResponse + '</td>' +
+                    '<td class="' + resultClass + '">' + (result.result || 'N/A') + '</td>' +
+                    '<td>' + (result.message || 'N/A') + '</td>' +
+                    '</tr>';
+            });
+
+            resultsHtml += '</tbody></table>';
+            resultsHtml += '</div>';
+            $('#results').html(resultsHtml);
+        }
+
+        // Lọc theo trạng thái (Pass/Fail)
+        $('#resultFilter').change(function() {
+            var filterValue = $(this).val();
+            var filteredResults = originalResults.filter(function(result) {
+                if (filterValue === 'all') return true;
+                return result.result === filterValue;
+            });
+            renderTable(filteredResults);
+        });
+
+        // Tìm kiếm
+        $('#searchInput').on('input', function() {
+            var searchTerm = $(this).val().toLowerCase();
+            var filteredResults = originalResults.filter(function(result) {
+                return (
+                    (result.api_name || '').toLowerCase().includes(searchTerm) ||
+                    (result.endpoint || '').toLowerCase().includes(searchTerm) ||
+                    (result.message || '').toLowerCase().includes(searchTerm)
+                );
+            });
+            renderTable(filteredResults);
+        });
+
+        // Sắp xếp cột
+        $('.excel-table').on('click', 'th[data-sort]', function() {
+            var column = $(this).data('sort');
+            var order = $(this).data('order') === 'asc' ? 'desc' : 'asc';
+            $(this).data('order', order);
+
+            var sortedResults = [...originalResults].sort(function(a, b) {
+                var aValue = a[column] || '';
+                var bValue = b[column] || '';
+                if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+                if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+                if (aValue < bValue) return order === 'asc' ? -1 : 1;
+                if (aValue > bValue) return order === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderTable(sortedResults);
+        });
+    </script>
+</body>
+</html> -->
+<!-- OK -->
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Automation Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+        }
+        .excel-table, .library-table {
+            border-collapse: collapse;
+            width: 100%;
+            background-color: #fff;
+        }
+        .excel-table th, .excel-table td, .library-table th, .library-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 250px;
+        }
+        .excel-table th, .library-table th {
+            background-color: #e6f3ff;
+            color: #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+        }
+        .excel-table th:hover, .library-table th:hover {
+            background-color: #d0e6ff;
+        }
+        .excel-table tr:nth-child(even), .library-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .excel-table tr:hover, .library-table tr:hover {
+            background-color: #f0f0f0;
+        }
+        .result-pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .result-fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .summary-box {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f0f8ff;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .summary-box ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .summary-box li {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        .filter-search {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        {% if username and project %}
+        <div class="alert alert-info">
+            Xin chào <strong>{{ username }}</strong>! Dự án: <strong>{{ project }}</strong>.
+            <a href="/logout" class="btn btn-sm btn-danger ml-3">Đăng xuất</a>
+        </div>
+        {% endif %}
+
+        <h1>Test Automation Dashboard</h1>
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link active" id="run-tab" data-toggle="tab" href="#run">Chạy Test</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="library-tab" data-toggle="tab" href="#library">Quản lý Đợt Test</a>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-3">
+            <div class="tab-pane fade show active" id="run">
+                <p>Upload file <code>test_cases.xlsx</code> để chạy kiểm thử API.</p>
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="test_name">Tên đợt test:</label>
+                        <input type="text" class="form-control" id="test_name" name="test_name" placeholder="Nhập tên đợt test (tùy chọn)" maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="file">Chọn file test_cases.xlsx:</label>
+                        <input type="file" class="form-control-file" id="file" name="file" accept=".xlsx" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Chạy Test</button>
+                </form>
+
+                <div class="filter-search mt-4">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="resultFilter">Lọc theo kết quả:</label>
+                            <select id="resultFilter" class="form-control">
+                                <option value="all">Tất cả</option>
+                                <option value="Pass">Pass</option>
+                                <option value="Fail">Fail</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label for="searchInput">Tìm kiếm:</label>
+                            <input type="text" id="searchInput" class="form-control" placeholder="Tìm theo API Name, Endpoint, Message...">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="summary" class="mt-4"></div>
+                <div id="results" class="mt-4"></div>
+                <div id="download" class="mt-2"></div>
+            </div>
+
+            <div class="tab-pane fade" id="library">
+                <h3>Quản lý Đợt Test</h3>
+                <p>Danh sách các đợt test đã lưu.</p>
+                <div id="libraryTable" class="table-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let originalResults = []; // Lưu dữ liệu gốc để lọc/tìm kiếm/sắp xếp
+
+        // Tải danh sách đợt test
+        function loadLibrary() {
+            $.ajax({
+                url: '/library',
+                type: 'GET',
+                success: function(data) {
+                    if (data.error) {
+                        $('#libraryTable').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        return;
+                    }
+
+                    var libraryHtml = '<table class="library-table">';
+                    libraryHtml += '<thead><tr><th>ID</th><th>Tên Đợt Test</th><th>Thời gian</th><th>File Test Case</th><th>File Kết Quả</th><th>Hành động</th></tr></thead><tbody>';
+                    data.library.forEach(function(item) {
+                        libraryHtml += '<tr>' +
+                            '<td>' + item.id + '</td>' +
+                            '<td>' + (item.test_name || 'Unnamed Test') + '</td>' +
+                            '<td>' + item.created_at + '</td>' +
+                            '<td><a href="/download/' + item.test_case_file + '">Tải</a></td>' +
+                            '<td><a href="/download/' + item.result_file + '">Tải</a></td>' +
+                            '<td>' +
+                                '<button class="btn btn-primary btn-sm rerun-btn" data-id="' + item.id + '">Chạy lại</button> ' +
+                                '<button class="btn btn-danger btn-sm delete-btn" data-id="' + item.id + '">Xóa</button>' +
+                            '</td>' +
+                            '</tr>';
+                    });
+                    libraryHtml += '</tbody></table>';
+                    $('#libraryTable').html(libraryHtml);
+                },
+                error: function(xhr, status, error) {
+                    console.error('Library AJAX Error:', xhr.responseText, status, error);
+                    $('#libraryTable').html('<div class="alert alert-danger">Lỗi khi tải danh sách đợt test: ' + (xhr.responseText || error) + '</div>');
+                }
+            });
+        }
+
+        // Tải danh sách khi mở tab Quản lý Đợt Test
+        $('#library-tab').on('shown.bs.tab', function() {
+            loadLibrary();
+        });
+
+        // Xử lý chạy lại test case
+        $(document).on('click', '.rerun-btn', function() {
+            var id = $(this).data('id');
+            $('#results').html('<p class="text-info">Đang chạy lại kiểm thử...</p>');
+            $('#summary').html('');
+            $('#download').html('');
+
+            $.ajax({
+                url: '/rerun/' + id,
+                type: 'POST',
+                success: function(data) {
+                    console.log('Rerun Response:', JSON.stringify(data, null, 2));
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    originalResults = data.results || [];
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> ' + (summary['Pass'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Failed:</strong> ' + (summary['Fail'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị bảng kết quả
+                    renderTable(originalResults);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download/' + data.result_file + '" class="btn btn-success">Tải file test_result.xlsx</a>');
+
+                    // Chuyển về tab Chạy Test
+                    $('#run-tab').tab('show');
+                },
+                error: function(xhr, status, error) {
+                    console.error('Rerun AJAX Error:', xhr.responseText, status, error);
+                    try {
+                        var errorData = JSON.parse(xhr.responseText);
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + (errorData.error || error) + '</div>');
+                    } catch (e) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + (xhr.responseText || error) + '</div>');
+                    }
+                    $('#download').html('');
+                }
+            });
+        });
+
+        // Xử lý xóa đợt test
+        $(document).on('click', '.delete-btn', function() {
+            var id = $(this).data('id');
+            if (confirm('Bạn có chắc muốn xóa đợt test này? Hành động này không thể hoàn tác.')) {
+                $.ajax({
+                    url: '/delete/' + id,
+                    type: 'POST',
+                    success: function(data) {
+                        if (data.error) {
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + data.error + '</div>');
+                            return;
+                        }
+                        alert('Xóa đợt test thành công!');
+                        loadLibrary(); // Làm mới danh sách
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Delete AJAX Error:', xhr.responseText, status, error);
+                        try {
+                            var errorData = JSON.parse(xhr.responseText);
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + (errorData.error || error) + '</div>');
+                        } catch (e) {
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + (xhr.responseText || error) + '</div>');
+                        }
+                    }
+                });
+            }
+        });
+
+        // Xử lý upload file
+        $('#uploadForm').submit(function(e) {
+            e.preventDefault();
+            $('#results').html('<p class="text-info">Đang chạy kiểm thử...</p>');
+            $('#summary').html('');
+            $('#download').html('');
+            var formData = new FormData(this);
+
+            $.ajax({
+                url: '/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    console.log('Upload Response:', JSON.stringify(data, null, 2));
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    // Lưu dữ liệu gốc
+                    originalResults = data.results || [];
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> ' + (summary['Pass'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Failed:</strong> ' + (summary['Fail'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị bảng kết quả
+                    renderTable(originalResults);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download/' + data.result_file + '" class="btn btn-success">Tải file test_result.xlsx</a>');
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX Error:', xhr.responseText, status, error);
+                    try {
+                        var errorData = JSON.parse(xhr.responseText);
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (errorData.error || error) + '</div>');
+                    } catch (e) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (xhr.responseText || error) + '</div>');
+                    }
+                    $('#download').html('');
+                }
+            });
+        });
+
+        // Hàm hiển thị bảng
+        function renderTable(results) {
+            var resultsHtml = '<h3>Chi Tiết Kiểm Thử</h3>';
+            resultsHtml += '<div class="table-container">';
+            resultsHtml += '<table class="excel-table">';
+            resultsHtml += '<thead><tr><th data-sort="api_name">API Name</th><th data-sort="method">Method</th><th data-sort="endpoint">Endpoint</th><th>Request Body</th><th data-sort="expected_status">Expected Status</th><th>Expected Response</th><th>Actual Response</th><th data-sort="result">Result</th><th>Message</th></tr></thead><tbody>';
+
+            results.forEach(function(result) {
+                var resultClass = result.result === 'Pass' ? 'result-pass' : 'result-fail';
+                var requestBody = typeof result.request_body === 'object' ? JSON.stringify(result.request_body, null, 2) : result.request_body || 'N/A';
+                var expectedResponse = typeof result.expected_response === 'object' ? JSON.stringify(result.expected_response, null, 2) : result.expected_response || 'N/A';
+                var actualResponse = typeof result.actual_response === 'object' ? JSON.stringify(result.actual_response, null, 2) : result.actual_response || 'N/A';
+
+                resultsHtml += '<tr>' +
+                    '<td>' + (result.api_name || 'N/A') + '</td>' +
+                    '<td>' + (result.method || 'N/A') + '</td>' +
+                    '<td>' + (result.endpoint || 'N/A') + '</td>' +
+                    '<td>' + requestBody + '</td>' +
+                    '<td>' + (result.expected_status || 'N/A') + '</td>' +
+                    '<td>' + expectedResponse + '</td>' +
+                    '<td>' + actualResponse + '</td>' +
+                    '<td class="' + resultClass + '">' + (result.result || 'N/A') + '</td>' +
+                    '<td>' + (result.message || 'N/A') + '</td>' +
+                    '</tr>';
+            });
+
+            resultsHtml += '</tbody></table>';
+            resultsHtml += '</div>';
+            $('#results').html(resultsHtml);
+        }
+
+        // Lọc theo trạng thái (Pass/Fail)
+        $('#resultFilter').change(function() {
+            var filterValue = $(this).val();
+            var filteredResults = originalResults.filter(function(result) {
+                if (filterValue === 'all') return true;
+                return result.result === filterValue;
+            });
+            renderTable(filteredResults);
+        });
+
+        // Tìm kiếm
+        $('#searchInput').on('input', function() {
+            var searchTerm = $(this).val().toLowerCase();
+            var filteredResults = originalResults.filter(function(result) {
+                return (
+                    (result.api_name || '').toLowerCase().includes(searchTerm) ||
+                    (result.endpoint || '').toLowerCase().includes(searchTerm) ||
+                    (result.message || '').toLowerCase().includes(searchTerm)
+                );
+            });
+            renderTable(filteredResults);
+        });
+
+        // Sắp xếp cột
+        $(document).on('click', '.excel-table th[data-sort]', function() {
+            var column = $(this).data('sort');
+            var order = $(this).data('order') === 'asc' ? 'desc' : 'asc';
+            $(this).data('order', order);
+
+            var sortedResults = [...originalResults].sort(function(a, b) {
+                var aValue = a[column] || '';
+                var bValue = b[column] || '';
+                if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+                if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+                if (aValue < bValue) return order === 'asc' ? -1 : 1;
+                if (aValue > bValue) return order === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderTable(sortedResults);
+        });
+    </script>
+</body>
+</html> -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Automation Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 1400px;
+            margin-top: 2rem;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            background: #ffffff;
+            margin-bottom: 2rem;
+            transition: transform 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-header {
+            background: linear-gradient(to right, #007bff, #00c4ff);
+            color: white;
+            border-radius: 15px 15px 0 0;
+            padding: 1.5rem;
+        }
+        .nav-tabs .nav-link {
+            border-radius: 10px;
+            margin: 0 5px;
+            color: #007bff;
+            font-weight: 500;
+        }
+        .nav-tabs .nav-link.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+        }
+        .excel-table, .library-table {
+            border-collapse: collapse;
+            width: 100%;
+            background-color: #fff;
+        }
+        .excel-table th, .excel-table td, .library-table th, .library-table td {
+            border: 1px solid #e0e0e0;
+            padding: 12px;
+            text-align: left;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 250px;
+        }
+        .excel-table th, .library-table th {
+            background: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .excel-table th:hover, .library-table th:hover {
+            background: #0056b3;
+        }
+        .excel-table tr:nth-child(even), .library-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .excel-table tr:hover, .library-table tr:hover {
+            background-color: #e9ecef;
+        }
+        .result-pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .result-fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .summary-box {
+            padding: 20px;
+            background: #f1f8ff;
+            border-radius: 10px;
+            border: 1px solid #d0e6ff;
+            margin: 20px 0;
+        }
+        .summary-box ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .summary-box li {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #333;
+        }
+        .filter-search {
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background: #007bff;
+            border: none;
+            border-radius: 8px;
+            transition: background 0.3s, transform 0.2s;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        .btn-danger {
+            border-radius: 8px;
+            transition: background 0.3s, transform 0.2s;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        .btn-success {
+            border-radius: 8px;
+            transition: background 0.3s, transform 0.2s;
+        }
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+        .alert-info {
+            border-radius: 10px;
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+        }
+        .summary-pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .summary-fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .loading-spinner .spinner-border {
+            width: 2rem;
+            height: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if username and project %}
+        <div class="alert alert-info d-flex justify-content-between align-items-center">
+            <span>Xin chào <strong>{{ username }}</strong>! Dự án: <strong>{{ project }}</strong>.</span>
+            <a href="/logout" class="btn btn-danger btn-sm">Đăng xuất</a>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header">
+                <h1 class="mb-0">Test Automation Dashboard</h1>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="run-tab" data-bs-toggle="tab" href="#run">Chạy Test</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="library-tab" data-bs-toggle="tab" href="#library">Quản lý Đợt Test</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content mt-4">
+                    <div class="tab-pane fade show active" id="run">
+                        <div class="card">
+                            <div class="card-body">
+                                <p class="text-muted">Upload file <code>test_cases.xlsx</code> để chạy kiểm thử API.</p>
+                                <form id="uploadForm" enctype="multipart/form-data">
+                                    <div class="mb-3">
+                                        <label for="test_name" class="form-label">Tên đợt test:</label>
+                                        <input type="text" class="form-control" id="test_name" name="test_name" placeholder="Nhập tên đợt test (tùy chọn)" maxlength="100">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="file" class="form-label">Chọn file test_cases.xlsx:</label>
+                                        <input type="file" class="form-control" id="file" name="file" accept=".xlsx" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Chạy Test</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="filter-search mt-4">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="resultFilter" class="form-label">Lọc theo kết quả:</label>
+                                    <select id="resultFilter" class="form-select">
+                                        <option value="all">Tất cả</option>
+                                        <option value="Pass">Pass</option>
+                                        <option value="Fail">Fail</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-8 mb-3">
+                                    <label for="searchInput" class="form-label">Tìm kiếm:</label>
+                                    <input type="text" id="searchInput" class="form-control" placeholder="Tìm theo API Name, Endpoint, Message...">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="summary" class="mt-4"></div>
+                        <div id="results" class="mt-4"></div>
+                        <div id="download" class="mt-2"></div>
+                        <div id="loading" class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Đang tải...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="library">
+                        <div class="card">
+                            <div class="card-body">
+                                <h3>Quản lý Đợt Test</h3>
+                                <p class="text-muted">Danh sách các đợt test đã lưu.</p>
+                                <div id="libraryTable" class="table-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let originalResults = []; // Lưu dữ liệu gốc để lọc/tìm kiếm/sắp xếp
+
+        // Tải danh sách đợt test
+        function loadLibrary() {
+            $.ajax({
+                url: '/library',
+                type: 'GET',
+                success: function(data) {
+                    if (data.error) {
+                        $('#libraryTable').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        return;
+                    }
+
+                    var libraryHtml = '<table class="library-table">';
+                    libraryHtml += '<thead><tr><th>ID</th><th>Tên Đợt Test</th><th>Thời gian</th><th>Tóm tắt Kết quả</th><th>File Test Case</th><th>File Kết Quả</th><th>Hành động</th></tr></thead><tbody>';
+                    data.library.forEach(function(item) {
+                        var summary = `<span>Total: ${item.total_tests || 0}, </span>` +
+                                      `<span class="summary-pass">Pass: ${item.pass_count || 0}, </span>` +
+                                      `<span class="summary-fail">Fail: ${item.fail_count || 0}</span>`;
+                        libraryHtml += '<tr>' +
+                            '<td>' + item.id + '</td>' +
+                            '<td>' + (item.test_name || 'Unnamed Test') + '</td>' +
+                            '<td>' + item.created_at + '</td>' +
+                            '<td>' + summary + '</td>' +
+                            '<td><a href="/download/' + item.test_case_file + '" class="text-primary">Tải</a></td>' +
+                            '<td><a href="/download/' + item.result_file + '" class="text-primary">Tải</a></td>' +
+                            '<td>' +
+                                '<button class="btn btn-primary btn-sm rerun-btn" data-id="' + item.id + '">Chạy lại</button> ' +
+                                '<button class="btn btn-danger btn-sm delete-btn" data-id="' + item.id + '">Xóa</button>' +
+                            '</td>' +
+                            '</tr>';
+                    });
+                    libraryHtml += '</tbody></table>';
+                    $('#libraryTable').html(libraryHtml);
+                },
+                error: function(xhr, status, error) {
+                    console.error('Library AJAX Error:', xhr.responseText, status, error);
+                    $('#libraryTable').html('<div class="alert alert-danger">Lỗi khi tải danh sách đợt test: ' + (xhr.responseText || error) + '</div>');
+                }
+            });
+        }
+
+        // Tải danh sách khi mở tab Quản lý Đợt Test
+        $('#library-tab').on('shown.bs.tab', function() {
+            loadLibrary();
+        });
+
+        // Xử lý chạy lại test case
+        $(document).on('click', '.rerun-btn', function() {
+            var id = $(this).data('id');
+            $('#results').html('');
+            $('#summary').html('');
+            $('#download').html('');
+            $('#loading').show();
+
+            $.ajax({
+                url: '/rerun/' + id,
+                type: 'POST',
+                success: function(data) {
+                    $('#loading').hide();
+                    console.log('Rerun Response:', JSON.stringify(data, null, 2));
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    originalResults = data.results || [];
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> <span class="result-pass">' + (summary['Pass'] || 0) + '</span></li>';
+                        summaryHtml += '<li><strong>Failed:</strong> <span class="result-fail">' + (summary['Fail'] || 0) + '</span></li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị bảng kết quả
+                    renderTable(originalResults);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download/' + data.result_file + '" class="btn btn-success">Tải file test_result.xlsx</a>');
+
+                    // Chuyển về tab Chạy Test
+                    $('#run-tab').tab('show');
+                },
+                error: function(xhr, status, error) {
+                    $('#loading').hide();
+                    console.error('Rerun AJAX Error:', xhr.responseText, status, error);
+                    try {
+                        var errorData = JSON.parse(xhr.responseText);
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + (errorData.error || error) + '</div>');
+                    } catch (e) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy lại: ' + (xhr.responseText || error) + '</div>');
+                    }
+                    $('#download').html('');
+                }
+            });
+        });
+
+        // Xử lý xóa đợt test
+        $(document).on('click', '.delete-btn', function() {
+            var id = $(this).data('id');
+            if (confirm('Bạn có chắc muốn xóa đợt test này? Hành động này không thể hoàn tác.')) {
+                $.ajax({
+                    url: '/delete/' + id,
+                    type: 'POST',
+                    success: function(data) {
+                        if (data.error) {
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + data.error + '</div>');
+                            return;
+                        }
+                        alert('Xóa đợt test thành công!');
+                        loadLibrary(); // Làm mới danh sách
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Delete AJAX Error:', xhr.responseText, status, error);
+                        try {
+                            var errorData = JSON.parse(xhr.responseText);
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + (errorData.error || error) + '</div>');
+                        } catch (e) {
+                            $('#libraryTable').prepend('<div class="alert alert-danger">Lỗi khi xóa: ' + (xhr.responseText || error) + '</div>');
+                        }
+                    }
+                });
+            }
+        });
+
+        // Xử lý upload file
+        $('#uploadForm').submit(function(e) {
+            e.preventDefault();
+            $('#results').html('');
+            $('#summary').html('');
+            $('#download').html('');
+            $('#loading').show();
+            var formData = new FormData(this);
+
+            $.ajax({
+                url: '/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    $('#loading').hide();
+                    console.log('Upload Response:', JSON.stringify(data, null, 2));
+                    if (data.error) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi: ' + data.error + '</div>');
+                        $('#download').html('');
+                        return;
+                    }
+
+                    // Lưu dữ liệu gốc
+                    originalResults = data.results || [];
+
+                    // Hiển thị Summary
+                    if (Array.isArray(data.summary) && data.summary.length > 0) {
+                        var summary = data.summary[0];
+                        var summaryHtml = '<div class="summary-box">';
+                        summaryHtml += '<h4>Tóm Tắt Kiểm Thử</h4>';
+                        summaryHtml += '<ul>';
+                        summaryHtml += '<li><strong>Tổng số test case:</strong> ' + (summary['Total Tests'] || 0) + '</li>';
+                        summaryHtml += '<li><strong>Passed:</strong> <span class="result-pass">' + (summary['Pass'] || 0) + '</span></li>';
+                        summaryHtml += '<li><strong>Failed:</strong> <span class="result-fail">' + (summary['Fail'] || 0) + '</span></li>';
+                        summaryHtml += '<li><strong>Ngày kiểm thử:</strong> ' + (summary['Test Date'] || '-') + '</li>';
+                        summaryHtml += '</ul>';
+                        summaryHtml += '</div>';
+                        $('#summary').html(summaryHtml);
+                    } else {
+                        $('#summary').html('<div class="alert alert-warning">Không tìm thấy dữ liệu Summary.</div>');
+                    }
+
+                    // Hiển thị bảng kết quả
+                    renderTable(originalResults);
+
+                    // Hiển thị nút tải file
+                    $('#download').html('<a href="/download/' + data.result_file + '" class="btn btn-success">Tải file test_result.xlsx</a>');
+                },
+                error: function(xhr, status, error) {
+                    $('#loading').hide();
+                    console.error('AJAX Error:', xhr.responseText, status, error);
+                    try {
+                        var errorData = JSON.parse(xhr.responseText);
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (errorData.error || error) + '</div>');
+                    } catch (e) {
+                        $('#results').html('<div class="alert alert-danger">Lỗi khi chạy kiểm thử: ' + (xhr.responseText || error) + '</div>');
+                    }
+                    $('#download').html('');
+                }
+            });
+        });
+
+        // Hàm hiển thị bảng
+        function renderTable(results) {
+            var resultsHtml = '<h3>Chi Tiết Kiểm Thử</h3>';
+            resultsHtml += '<div class="table-container">';
+            resultsHtml += '<table class="excel-table">';
+            resultsHtml += '<thead><tr><th data-sort="api_name">API Name</th><th data-sort="method">Method</th><th data-sort="endpoint">Endpoint</th><th>Request Body</th><th data-sort="expected_status">Expected Status</th><th>Expected Response</th><th>Actual Response</th><th data-sort="result">Result</th><th>Message</th></tr></thead><tbody>';
+
+            results.forEach(function(result) {
+                var resultClass = result.result === 'Pass' ? 'result-pass' : 'result-fail';
+                var requestBody = typeof result.request_body === 'object' ? JSON.stringify(result.request_body, null, 2) : result.request_body || 'N/A';
+                var expectedResponse = typeof result.expected_response === 'object' ? JSON.stringify(result.expected_response, null, 2) : result.expected_response || 'N/A';
+                var actualResponse = typeof result.actual_response === 'object' ? JSON.stringify(result.actual_response, null, 2) : result.actual_response || 'N/A';
+
+                resultsHtml += '<tr>' +
+                    '<td>' + (result.api_name || 'N/A') + '</td>' +
+                    '<td>' + (result.method || 'N/A') + '</td>' +
+                    '<td>' + (result.endpoint || 'N/A') + '</td>' +
+                    '<td>' + requestBody + '</td>' +
+                    '<td>' + (result.expected_status || 'N/A') + '</td>' +
+                    '<td>' + expectedResponse + '</td>' +
+                    '<td>' + actualResponse + '</td>' +
+                    '<td class="' + resultClass + '">' + (result.result || 'N/A') + '</td>' +
+                    '<td>' + (result.message || 'N/A') + '</td>' +
+                    '</tr>';
+            });
+
+            resultsHtml += '</tbody></table>';
+            resultsHtml += '</div>';
+            $('#results').html(resultsHtml);
+        }
+
+        // Lọc theo trạng thái (Pass/Fail)
+        $('#resultFilter').change(function() {
+            var filterValue = $(this).val();
+            var filteredResults = originalResults.filter(function(result) {
+                if (filterValue === 'all') return true;
+                return result.result === filterValue;
+            });
+            renderTable(filteredResults);
+        });
+
+        // Tìm kiếm
+        $('#searchInput').on('input', function() {
+            var searchTerm = $(this).val().toLowerCase();
+            var filteredResults = originalResults.filter(function(result) {
+                return (
+                    (result.api_name || '').toLowerCase().includes(searchTerm) ||
+                    (result.endpoint || '').toLowerCase().includes(searchTerm) ||
+                    (result.message || '').toLowerCase().includes(searchTerm)
+                );
+            });
+            renderTable(filteredResults);
+        });
+
+        // Sắp xếp cột
+        $(document).on('click', '.excel-table th[data-sort]', function() {
+            var column = $(this).data('sort');
+            var order = $(this).data('order') === 'asc' ? 'desc' : 'asc';
+            $(this).data('order', order);
+
+            var sortedResults = [...originalResults].sort(function(a, b) {
+                var aValue = a[column] || '';
+                var bValue = b[column] || '';
+                if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+                if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+                if (aValue < bValue) return order === 'asc' ? -1 : 1;
+                if (aValue > bValue) return order === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderTable(sortedResults);
+        });
+    </script>
+</body>
+</html>
